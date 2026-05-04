@@ -6,6 +6,10 @@ metadata:
   labels:
     {{- include "buildgrid.labels" . | nindent 4 }}
     app.kubernetes.io/component: server
+  {{- with .Values.global.serviceAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   type: {{ .Values.global.serviceType }}
   ports:
@@ -16,12 +20,6 @@ spec:
       {{- if eq .Values.global.serviceType "NodePort" }}
       nodePort: {{ .Values.buildgrid.server.nodePort | default 30051 }}
       {{- end }}
-    {{- if .Values.monitoring.prometheus.enabled }}
-    - port: 8080
-      targetPort: metrics
-      protocol: TCP
-      name: metrics
-    {{- end }}
   selector:
     {{- include "buildgrid.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: server

@@ -3,17 +3,15 @@
 
 # Global configuration
 global:
-  # Environment (development, staging, production)
-  environment: production
-  
-  # Domain for ingress
-  domain: buildgrid.example.com
-  
-  # Image pull secrets (if using private registry)
-  imagePullSecrets: []
-  
-  # Service type (ClusterIP, NodePort, LoadBalancer)
+  # Service type: ClusterIP, NodePort, or LoadBalancer
+  # For Tailscale (recommended): set to LoadBalancer and add annotation:
+  #   serviceAnnotations:
+  #     tailscale.com/expose: "true"
+  #     tailscale.com/hostname: "buildgrid"
   serviceType: ClusterIP
+  serviceAnnotations: {}
+
+  imagePullSecrets: []
 
 # Namespace configuration
 namespace:
