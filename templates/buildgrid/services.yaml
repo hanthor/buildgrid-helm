@@ -12,6 +12,9 @@ metadata:
   {{- end }}
 spec:
   type: {{ .Values.global.serviceType }}
+  {{- if .Values.global.loadBalancerClass }}
+  loadBalancerClass: {{ .Values.global.loadBalancerClass }}
+  {{- end }}
   ports:
     - port: {{ .Values.buildgrid.server.grpcPort }}
       targetPort: grpc

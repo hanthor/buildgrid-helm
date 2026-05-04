@@ -10,6 +10,8 @@ global:
   #     tailscale.com/hostname: "buildgrid"
   serviceType: ClusterIP
   serviceAnnotations: {}
+  # Set to "tailscale" when using Tailscale Kubernetes operator
+  loadBalancerClass: ""
 
   imagePullSecrets: []
 

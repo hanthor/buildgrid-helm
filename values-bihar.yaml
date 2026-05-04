@@ -3,12 +3,11 @@
 # Usage: helm install buildgrid . -f values-bihar.yaml -n buildgrid --create-namespace
 
 global:
-  serviceType: NodePort  # change to LoadBalancer + tailscale annotations once operator is installed:
-  # serviceType: LoadBalancer
-  # serviceAnnotations:
-  #   tailscale.com/expose: "true"
-  #   tailscale.com/hostname: "buildgrid"
-  # Then endpoint becomes: grpc://buildgrid.manatee-basking.ts.net:50051
+  serviceType: LoadBalancer
+  loadBalancerClass: tailscale
+  serviceAnnotations:
+    tailscale.com/hostname: "buildgrid"
+    tailscale.com/proxy-class: "on-bihar"
 
 buildgrid:
   image:
