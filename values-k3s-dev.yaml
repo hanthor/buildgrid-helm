@@ -1,0 +1,92 @@
+# K3S development override values
+# Usage: helm install buildgrid . -f values-k3s-dev.yaml -n buildgrid --create-namespace
+
+global:
+  serviceType: NodePort
+
+buildgrid:
+  image:
+    repository: buildgrid
+    tag: "local"
+    pullPolicy: Never  # Use locally imported image, don't try to pull
+
+  server:
+    replicaCount: 1
+    grpcPort: 50051
+    nodePort: 30051
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+      limits:
+        memory: "1Gi"
+        cpu: "1"
+
+  server:
+    replicaCount: 1
+    grpcPort: 50051
+    nodePort: 30051
+    threadPoolSize: 10
+
+  bot:
+    enabled: true
+    replicaCount: 1
+    image:
+      repository: registry.gitlab.com/buildgrid/buildgrid.hub.docker.com/buildbox
+      tag: "nightly"
+      pullPolicy: Always
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+      limits:
+        memory: "2Gi"
+        cpu: "2"
+
+  storage:
+    lruSize: "512M"  # In-memory LRU cache for CAS
+
+postgresql:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "14-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    username: bgd
+    password: "buildgrid-dev"
+    database: bgd
+    superuserPassword: "buildgrid-dev-super"
+  primary:
+    persistence:
+      enabled: true
+      size: "5Gi"
+      storageClassName: "local-path"
+      accessMode: ReadWriteOnce
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+
+redis:
+  enabled: false  # Not needed for dev/single-node
+
+ingress:
+  enabled: false
+
+monitoring:
+  enabled: false
+  prometheus:
+    enabled: false
+
+podDisruptionBudget:
+  enabled: false
+
+backup:
+  enabled: false
+
+logging:
+  level: "DEBUG"

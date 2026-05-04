@@ -1,0 +1,33 @@
+BuildGrid has been deployed!
+
+1. Get the BuildGrid server address:
+{{- if eq .Values.global.serviceType "NodePort" }}
+  NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+  echo "BuildGrid endpoint: grpc://$NODE_IP:{{ .Values.buildgrid.server.nodePort }}"
+{{- else if eq .Values.global.serviceType "ClusterIP" }}
+  # Port forward to access locally:
+  kubectl port-forward -n {{ .Values.namespace.name }} svc/{{ include "buildgrid.fullname" . }}-server {{ .Values.buildgrid.server.grpcPort }}:{{ .Values.buildgrid.server.grpcPort }}
+  echo "BuildGrid endpoint: grpc://localhost:{{ .Values.buildgrid.server.grpcPort }}"
+{{- end }}
+
+2. Configure Bazel to use BuildGrid:
+  # In your .bazelrc or project WORKSPACE:
+  build --remote_executor=grpc://<NODE_IP>:{{ .Values.buildgrid.server.nodePort }}
+  build --remote_instance_name=''
+
+3. Configure BuildStream (Dakota) to use BuildGrid:
+  # In your project.conf or user.conf:
+  scheduler:
+    remote-execution-address: grpc://<NODE_IP>:{{ .Values.buildgrid.server.nodePort }}
+
+4. Check pod status:
+  kubectl get pods -n {{ .Values.namespace.name }}
+
+5. Check server logs:
+  kubectl logs -n {{ .Values.namespace.name }} -l app.kubernetes.io/component=server -f
+
+NOTE: BuildGrid requires a locally built Docker image. Build it with:
+  git clone https://gitlab.com/BuildGrid/buildgrid.git
+  cd buildgrid
+  docker build --tag buildgrid:local .
+  sudo k3s ctr images import <(docker save buildgrid:local)

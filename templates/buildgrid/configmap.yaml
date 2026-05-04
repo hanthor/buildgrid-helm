@@ -1,0 +1,107 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "buildgrid.fullname" . }}-server-config
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "buildgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+data:
+  buildgrid.yaml: |
+    server:
+      - !channel
+        address: "[::]:{{ .Values.buildgrid.server.grpcPort }}"
+        insecure-mode: true
+
+    authorization:
+      method: none
+
+    monitoring:
+      enabled: false
+
+    connections:
+      - !sql-connection &sql
+        connection-string: "postgresql://{{ .Values.postgresql.auth.username }}:{{ .Values.postgresql.auth.password }}@{{ include "buildgrid.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}"
+        pool-size: 10
+        pool-timeout: 30
+        pool-recycle: 3600
+        max-overflow: 20
+      {{- if .Values.redis.enabled }}
+      - !redis-connection &redis
+        host: {{ include "buildgrid.fullname" . }}-redis
+        port: 6379
+      {{- end }}
+
+    storages:
+      {{- if and .Values.buildgrid.storage.useDisk .Values.buildgrid.storage.persistence.enabled }}
+      - !disk-storage &disk-cas
+        path: /var/buildgrid/cas
+      {{- if .Values.redis.enabled }}
+      - !sql-index &indexed-cas
+        storage: *disk-cas
+        sql: *sql
+        refresh-accesstime-older-than: 21600  # 6 hours
+      - !redis-fmb-cache &cas-storage
+        redis: *redis
+        storage: *indexed-cas
+        ttl-secs: 3600
+      {{- else }}
+      - !sql-index &cas-storage
+        storage: *disk-cas
+        sql: *sql
+        refresh-accesstime-older-than: 21600
+      {{- end }}
+      {{- else }}
+      - !lru-storage &cas-storage
+        size: {{ .Values.buildgrid.storage.lruSize | quote }}
+      {{- end }}
+
+    caches:
+      - !lru-action-cache &build-cache
+        storage: *cas-storage
+        max-cached-refs: 1024
+        cache-failed-actions: false
+        allow-updates: true
+
+    schedulers:
+      - !sql-scheduler &state-database
+        sql: *sql
+        storage: *cas-storage
+        action-cache: *build-cache
+        max-execution-timeout: 7200
+        poll-interval: 0.5
+        queue-timeout-job-max-age:
+          days: 1
+        queue-timeout-period:
+          minutes: 1
+        queue-timeout-max-window: 100
+        queue-timeout-configs:
+          - !queue-timeout-thread
+            name: stale-jobs
+            instance-names: [""]
+            job-max-age: { minutes: 30 }
+            handling-period: { seconds: 30 }
+            max-handling-window: 100
+
+    instances:
+      - name: ''
+        description: "BuildGrid remote execution instance"
+        services:
+          - !action-cache
+            cache: *build-cache
+
+          - !execution
+            scheduler: *state-database
+
+          - !cas
+            storage: *cas-storage
+            tree-cache-size: 100
+            tree-cache-ttl-minutes: 30
+
+          - !bytestream
+            storage: *cas-storage
+
+          - !introspection
+            scheduler: *state-database
+
+    thread-pool-size: {{ .Values.buildgrid.server.threadPoolSize }}

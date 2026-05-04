@@ -1,0 +1,13 @@
+{{- if .Values.postgresql.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "buildgrid.fullname" . }}-postgresql-init
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "buildgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+data:
+  all.sql: |
+{{ .Files.Get "all.sql" | indent 4 }}
+{{- end }}

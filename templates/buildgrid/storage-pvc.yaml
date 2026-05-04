@@ -1,0 +1,19 @@
+{{- if and .Values.buildgrid.storage.useDisk .Values.buildgrid.storage.persistence.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "buildgrid.fullname" . }}-cas-storage
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "buildgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/component: storage
+spec:
+  accessModes:
+    - {{ .Values.buildgrid.storage.persistence.accessMode }}
+  {{- if .Values.buildgrid.storage.persistence.storageClassName }}
+  storageClassName: {{ .Values.buildgrid.storage.persistence.storageClassName | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.buildgrid.storage.persistence.size | quote }}
+{{- end }}

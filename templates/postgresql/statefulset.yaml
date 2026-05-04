@@ -1,0 +1,113 @@
+{{- if .Values.postgresql.enabled -}}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "buildgrid.fullname" . }}-postgresql
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "buildgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  serviceName: {{ include "buildgrid.fullname" . }}-postgresql
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "buildgrid.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgresql
+  template:
+    metadata:
+      labels:
+        {{- include "buildgrid.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgresql
+    spec:
+      serviceAccountName: {{ include "buildgrid.serviceAccountName" . }}
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      containers:
+        - name: postgresql
+          image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          ports:
+            - name: postgresql
+              containerPort: {{ .Values.postgresql.primary.port }}
+              protocol: TCP
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.postgresql.auth.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "buildgrid.fullname" . }}-postgresql-secret
+                  key: password
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.auth.database | quote }}
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          {{- if .Values.postgresql.primary.livenessProbe.enabled }}
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - {{ .Values.postgresql.auth.username | quote }}
+                - -d
+                - {{ .Values.postgresql.auth.database | quote }}
+            initialDelaySeconds: {{ .Values.postgresql.primary.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.postgresql.primary.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.postgresql.primary.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.postgresql.primary.livenessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.postgresql.primary.readinessProbe.enabled }}
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - {{ .Values.postgresql.auth.username | quote }}
+                - -d
+                - {{ .Values.postgresql.auth.database | quote }}
+            initialDelaySeconds: {{ .Values.postgresql.primary.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.postgresql.primary.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.postgresql.primary.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.postgresql.primary.readinessProbe.failureThreshold }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.postgresql.primary.resources | nindent 12 }}
+          volumeMounts:
+            - name: postgresql-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-sql
+              mountPath: /docker-entrypoint-initdb.d
+      volumes:
+        - name: init-sql
+          configMap:
+            name: {{ include "buildgrid.fullname" . }}-postgresql-init
+      {{- with .Values.postgresql.primary.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.postgresql.primary.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if .Values.postgresql.primary.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: postgresql-data
+      spec:
+        accessModes:
+          - {{ .Values.postgresql.primary.persistence.accessMode }}
+        {{- if .Values.postgresql.primary.persistence.storageClassName }}
+        storageClassName: {{ .Values.postgresql.primary.persistence.storageClassName | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgresql.primary.persistence.size | quote }}
+  {{- else }}
+      volumes:
+        - name: postgresql-data
+          emptyDir: {}
+  {{- end }}
+{{- end }}

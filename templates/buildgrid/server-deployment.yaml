@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "buildgrid.fullname" . }}-server
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "buildgrid.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  replicas: {{ .Values.buildgrid.server.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "buildgrid.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        {{- include "buildgrid.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: server
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/buildgrid/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "buildgrid.serviceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      initContainers:
+        - name: wait-for-postgresql
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ include "buildgrid.fullname" . }}-postgresql {{ include "buildgrid.postgresql.port" . }}; do
+                echo "Waiting for PostgreSQL..."
+                sleep 2
+              done
+      containers:
+        - name: buildgrid-server
+          image: "{{ .Values.buildgrid.image.repository }}:{{ .Values.buildgrid.image.tag }}"
+          imagePullPolicy: {{ .Values.buildgrid.image.pullPolicy }}
+          args:
+            - server
+            - start
+            - /etc/buildgrid/buildgrid.yaml
+            - -vvv
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.buildgrid.server.grpcPort }}
+              protocol: TCP
+            {{- if .Values.monitoring.prometheus.enabled }}
+            - name: metrics
+              containerPort: 8080
+              protocol: TCP
+            {{- end }}
+          env:
+            - name: BUILDGRID_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "buildgrid.fullname" . }}-postgresql-secret
+                  key: password
+            {{- if .Values.redis.enabled }}
+            - name: BUILDGRID_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "buildgrid.fullname" . }}-redis-secret
+                  key: password
+                  optional: true
+            {{- end }}
+          livenessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: grpc
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.buildgrid.server.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/buildgrid
+              readOnly: true
+            - name: storage
+              mountPath: /var/buildgrid/cas
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "buildgrid.fullname" . }}-server-config
+        - name: storage
+          {{- if and .Values.buildgrid.storage.useDisk .Values.buildgrid.storage.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "buildgrid.fullname" . }}-cas-storage
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with .Values.buildgrid.server.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.buildgrid.server.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,112 @@
+# Bihar K3S deployment values
+# Remote server: bihar (192.168.0.5 / 100.85.9.86 Tailscale)
+# Usage: helm install buildgrid . -f values-bihar.yaml -n buildgrid --create-namespace
+
+global:
+  serviceType: NodePort
+
+buildgrid:
+  image:
+    repository: localhost/buildgrid
+    tag: "local"
+    pullPolicy: Never  # Use locally imported image
+
+  server:
+    replicaCount: 1
+    grpcPort: 50051
+    nodePort: 30051
+    threadPoolSize: 100
+    resources:
+      requests:
+        memory: "4Gi"
+        cpu: "2"
+      limits:
+        memory: "16Gi"
+        cpu: "8"
+
+  bot:
+    enabled: true
+    replicaCount: 16  # Bihar (24 CPU) + karnataka (32 CPU) = 2 nodes
+    image:
+      repository: registry.gitlab.com/buildgrid/buildgrid.hub.docker.com/buildbox
+      tag: "nightly"
+      pullPolicy: Always
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "1"
+      limits:
+        memory: "8Gi"
+        cpu: "4"
+
+  storage:
+    # Use disk storage backed by PVC — LRU OOMs on large builds like Qt6
+    useDisk: true
+    persistence:
+      enabled: true
+      size: "200Gi"
+      storageClassName: "local-path"
+      accessMode: ReadWriteOnce
+    lruSize: "2048M"  # fallback if disk disabled
+
+postgresql:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "14-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    username: bgd
+    password: "buildgrid-bihar"
+    database: bgd
+    superuserPassword: "buildgrid-bihar-super"
+  primary:
+    persistence:
+      enabled: true
+      size: "20Gi"
+      storageClassName: "local-path"
+      accessMode: ReadWriteOnce
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+      limits:
+        memory: "1Gi"
+        cpu: "1"
+
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: "7-alpine"
+    pullPolicy: IfNotPresent
+  auth:
+    enabled: false  # internal cluster only, no auth needed
+  master:
+    persistence:
+      enabled: false  # Redis is a cache, no need to persist
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "250m"
+      limits:
+        memory: "4Gi"
+        cpu: "1"
+
+ingress:
+  enabled: false
+
+monitoring:
+  enabled: true
+  prometheus:
+    enabled: true
+    interval: "15s"
+
+podDisruptionBudget:
+  enabled: false
+
+backup:
+  enabled: false
+
+logging:
+  level: "INFO"

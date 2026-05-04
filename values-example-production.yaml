@@ -1,0 +1,66 @@
+# Production values example: disk CAS + Redis + 8 workers
+# Adjust nodePort, passwords, and storageClassName for your cluster.
+
+global:
+  serviceType: NodePort
+
+buildgrid:
+  image:
+    repository: buildgrid
+    tag: "local"
+    pullPolicy: Never
+
+  server:
+    nodePort: 30051
+    threadPoolSize: 100
+    resources:
+      requests:
+        memory: "4Gi"
+        cpu: "2"
+      limits:
+        memory: "16Gi"
+        cpu: "8"
+
+  bot:
+    replicaCount: 8
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "2"
+      limits:
+        memory: "8Gi"
+        cpu: "4"
+
+  storage:
+    useDisk: true
+    persistence:
+      enabled: true
+      size: "200Gi"
+      storageClassName: "local-path"
+      accessMode: ReadWriteOnce
+
+postgresql:
+  auth:
+    username: bgd
+    password: "changeme-in-production"
+    database: bgd
+    superuserPassword: "changeme-in-production"
+  primary:
+    persistence:
+      enabled: true
+      size: "20Gi"
+      storageClassName: "local-path"
+
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: false
+    resources:
+      limits:
+        memory: "4Gi"
+
+logging:
+  level: "INFO"

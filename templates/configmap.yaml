@@ -1,0 +1,2 @@
+{{- /* This ConfigMap is superseded by templates/buildgrid/configmap.yaml */ -}}
+{{- /* Kept for backwards compatibility - may be removed */ -}}

@@ -1,0 +1,300 @@
+# BuildGrid Helm Chart - Default Values
+# This file contains all configurable parameters
+
+# Global configuration
+global:
+  # Environment (development, staging, production)
+  environment: production
+  
+  # Domain for ingress
+  domain: buildgrid.example.com
+  
+  # Image pull secrets (if using private registry)
+  imagePullSecrets: []
+  
+  # Service type (ClusterIP, NodePort, LoadBalancer)
+  serviceType: ClusterIP
+
+# Namespace configuration
+namespace:
+  create: true
+  name: buildgrid
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  
+  # Docker image
+  image:
+    repository: postgres
+    tag: "14-alpine"
+    pullPolicy: IfNotPresent
+  
+  # Authentication
+  auth:
+    username: bgd
+    password: "changeme"  # CHANGE THIS!
+    database: bgd
+    superuserPassword: "changeme"  # CHANGE THIS!
+  
+  # Primary instance (main database)
+  primary:
+    # Persistence
+    persistence:
+      enabled: true
+      size: 100Gi
+      storageClassName: "standard"  # Change to your storage class
+      accessMode: ReadWriteOnce
+    
+    # Resource limits
+    resources:
+      requests:
+        memory: "4Gi"
+        cpu: "2"
+      limits:
+        memory: "8Gi"
+        cpu: "4"
+    
+    # Probes
+    livenessProbe:
+      enabled: true
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    
+    readinessProbe:
+      enabled: true
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 1
+      failureThreshold: 3
+    
+    # Port
+    port: 5432
+    
+    # Node affinity (optional)
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
+
+# Redis configuration
+redis:
+  enabled: true
+  
+  # Docker image
+  image:
+    repository: redis
+    tag: "7-alpine"
+    pullPolicy: IfNotPresent
+  
+  # Authentication
+  auth:
+    enabled: true
+    password: "changeme"  # CHANGE THIS!
+  
+  # Master instance
+  master:
+    # Persistence
+    persistence:
+      enabled: true
+      size: 50Gi
+      storageClassName: "standard"
+      accessMode: ReadWriteOnce
+    
+    # Resource limits
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "1"
+      limits:
+        memory: "4Gi"
+        cpu: "2"
+    
+    # Port
+    port: 6379
+  
+  # Replicas (for Redis Sentinel)
+  replica:
+    replicaCount: 2
+    persistence:
+      enabled: true
+      size: 50Gi
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "500m"
+      limits:
+        memory: "2Gi"
+        cpu: "1"
+
+# BuildGrid configuration
+buildgrid:
+  # Docker image for all BuildGrid services.
+  # BuildGrid has no pre-built public image — you must build it from source:
+  #   git clone https://gitlab.com/BuildGrid/buildgrid.git
+  #   docker build --tag buildgrid:local .
+  #   sudo k3s ctr images import <(docker save buildgrid:local)
+  image:
+    repository: buildgrid
+    tag: "local"
+    pullPolicy: IfNotPresent
+
+  # All-in-one server (serves execution, CAS, bots interface in one process)
+  server:
+    replicaCount: 1
+    grpcPort: 50051
+    # NodePort for external access when serviceType=NodePort
+    nodePort: 30051
+    threadPoolSize: 100
+    nodeSelector: {}
+    tolerations: []
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+      limits:
+        memory: "4Gi"
+        cpu: "2"
+
+  # Worker bot configuration
+  # Uses registry.gitlab.com/buildgrid/buildgrid.hub.docker.com/buildbox:nightly
+  bot:
+    enabled: true
+    replicaCount: 2
+    image:
+      repository: registry.gitlab.com/buildgrid/buildgrid.hub.docker.com/buildbox
+      tag: "nightly"
+      pullPolicy: Always
+    nodeSelector: {}
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "1"
+      limits:
+        memory: "4Gi"
+        cpu: "4"
+
+  storage:
+    useDisk: false  # set true to use disk-backed PVC instead of in-memory LRU
+    lruSize: "2048M"
+    persistence:
+      enabled: false
+      size: "200Gi"
+      storageClassName: "local-path"
+      accessMode: ReadWriteOnce
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/grpc-services: "buildgrid-controller"
+  
+  hosts:
+    - host: buildgrid.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  
+  tls:
+    enabled: true
+    secretName: buildgrid-tls
+    issuer: letsencrypt-prod
+
+# RBAC configuration
+rbac:
+  enabled: true
+  create: true
+
+# Service Account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: "buildgrid"
+
+# Pod Security Context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+# Container Security Context
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false  # BuildGrid needs to write to filesystem
+  capabilities:
+    drop:
+      - ALL
+
+# Monitoring configuration
+monitoring:
+  enabled: false
+  
+  # Prometheus ServiceMonitor
+  prometheus:
+    enabled: false
+    interval: "30s"
+    path: "/metrics"
+  
+  # Grafana dashboard
+  grafana:
+    enabled: false
+    dashboard: "buildgrid-dashboard"
+
+# Resource quotas
+resourceQuota:
+  enabled: false
+  hard:
+    requests.cpu: "10"
+    requests.memory: "20Gi"
+    limits.cpu: "20"
+    limits.memory: "40Gi"
+    pods: "100"
+
+# Pod Disruption Budgets (for high availability)
+podDisruptionBudget:
+  enabled: true
+  controller:
+    minAvailable: 1
+  execution:
+    minAvailable: 1
+  operations:
+    minAvailable: 1
+
+# Autoscaling (horizontal pod autoscaler)
+autoscaling:
+  enabled: false
+  controller:
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+  execution:
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 80
+
+# Backup configuration
+backup:
+  enabled: true
+  schedule: "0 2 * * *"  # 2 AM daily
+  retention: 30  # days
+  storageLocation: "s3://buildgrid-backups"  # or local path
+
+# Logging configuration
+logging:
+  enabled: true
+  level: "INFO"
+  format: "json"  # json or text
+
+# Development settings
+development:
+  # Enable debug mode
+  debug: false
+  
+  # Mock services (for testing)
+  mockWorkers: false
+
+# Version info (chart version is in Chart.yaml)

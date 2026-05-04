@@ -1,0 +1,36 @@
+apiVersion: v2
+name: buildgrid
+description: >
+  Helm chart for BuildGrid — the open-source Remote Execution API (REAPI)
+  server. Supports Bazel, BuildStream/BST, and any REAPI-compatible client.
+  Includes PostgreSQL scheduler persistence, Redis CAS caching, and
+  buildbox worker bots with bubblewrap sandboxing.
+type: application
+version: 0.1.0
+appVersion: "0.5.2"
+
+keywords:
+  - buildgrid
+  - remote-execution
+  - reapi
+  - bazel
+  - buildstream
+  - build-system
+  - ci
+
+home: https://buildgrid.build/
+sources:
+  - https://gitlab.com/BuildGrid/buildgrid
+  - https://github.com/hanthor/buildgrid-helm
+
+maintainers:
+  - name: hanthor
+    url: https://github.com/hanthor
+
+dependencies: []
+
+annotations:
+  category: Build
+  licenses: Apache-2.0
+
+kubeVersion: ">=1.20.0-0"
