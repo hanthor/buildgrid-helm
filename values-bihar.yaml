@@ -114,3 +114,17 @@ backup:
 
 logging:
   level: "INFO"
+
+dashboard:
+  enabled: true
+  port: 8765
+  buildgridHost: "localhost"
+  buildgridEndpoint: "grpc://buildgrid.manatee-basking.ts.net:50051"
+  image:
+    repository: localhost/buildgrid-dashboard
+    tag: "local"
+    pullPolicy: Never
+  tailscale:
+    enabled: true
+    hostname: "buildgrid-dashboard"
+    proxyClass: "on-bihar"

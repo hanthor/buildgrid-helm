@@ -36,6 +36,17 @@ spec:
               value: {{ .Values.dashboard.buildgridHost | quote }}
             - name: BUILDGRID_ENDPOINT
               value: {{ .Values.dashboard.buildgridEndpoint | quote }}
+            - name: PGHOST
+              value: {{ include "buildgrid.fullname" . }}-postgresql
+            - name: PGUSER
+              value: {{ .Values.postgresql.auth.username | quote }}
+            - name: PGDATABASE
+              value: {{ .Values.postgresql.auth.database | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "buildgrid.fullname" . }}-postgresql-secret
+                  key: password
           {{- if .Values.dashboard.projectsConfigMap }}
           volumeMounts:
             - name: projects-config
