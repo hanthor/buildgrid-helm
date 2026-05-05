@@ -297,4 +297,20 @@ development:
   # Mock services (for testing)
   mockWorkers: false
 
+# Dashboard configuration
+dashboard:
+  enabled: false
+  port: 8765
+  buildgridHost: "bihar"
+  buildgridEndpoint: "grpc://buildgrid.manatee-basking.ts.net:50051"
+  projectsConfigMap: ""  # name of a ConfigMap with projects.json key
+  image:
+    repository: ghcr.io/hanthor/buildgrid-dashboard
+    tag: "latest"
+    pullPolicy: Always
+  tailscale:
+    enabled: false
+    hostname: "buildgrid-dashboard"
+    proxyClass: "on-bihar"
+
 # Version info (chart version is in Chart.yaml)
