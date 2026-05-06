@@ -1,0 +1,189 @@
+name: Helm Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 0.2.0)'
+        required: true
+
+jobs:
+  release:
+    name: Create Helm Release
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION=${{ github.event.inputs.version }}
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Release version: $VERSION"
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+
+      - name: Verify version in Chart.yaml
+        run: |
+          CHART_VERSION=$(grep "^version:" ./buildgrid-helm/Chart.yaml | awk '{print $2}')
+          RELEASE_VERSION=${{ steps.version.outputs.version }}
+          
+          if [ "$CHART_VERSION" != "$RELEASE_VERSION" ]; then
+            echo "❌ Version mismatch!"
+            echo "   Chart.yaml version: $CHART_VERSION"
+            echo "   Release version: $RELEASE_VERSION"
+            exit 1
+          fi
+          echo "✅ Version matches: $CHART_VERSION"
+
+      - name: Package Helm chart
+        run: |
+          echo "📦 Packaging Helm chart..."
+          helm package ./buildgrid-helm \
+            --version ${{ steps.version.outputs.version }} \
+            --destination /tmp/charts
+          
+          ls -lh /tmp/charts/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        if: github.event_name == 'push'
+        with:
+          files: /tmp/charts/buildgrid-*.tgz
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          tag_name: v${{ steps.version.outputs.version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to GitHub Release (dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: /tmp/charts/buildgrid-*.tgz
+          draft: true
+          prerelease: false
+          tag_name: v${{ steps.version.outputs.version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-chart:
+    name: Publish to Helm Repository
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+
+      - name: Package Helm chart
+        run: |
+          helm package ./buildgrid-helm --destination /tmp/charts
+
+      - name: Update Helm repository index
+        run: |
+          echo "📝 Creating/updating Helm repository index..."
+          
+          # If you have an existing gh-pages branch with chart repo
+          mkdir -p /tmp/repo
+          
+          # Download existing index if it exists
+          if curl -s -f -o /tmp/repo/index.yaml \
+             https://raw.githubusercontent.com/${{ github.repository }}/gh-pages/index.yaml; then
+            echo "✅ Downloaded existing index.yaml"
+          else
+            echo "ℹ️  No existing index found, creating new one"
+          fi
+          
+          # Generate new index
+          helm repo index /tmp/charts --merge /tmp/repo/index.yaml --url https://raw.githubusercontent.com/${{ github.repository }}/gh-pages
+          
+          cp /tmp/charts/index.yaml /tmp/repo/index.yaml
+          ls -lh /tmp/repo/
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: /tmp/repo
+          commit_message: "chore: publish Helm chart ${{ github.ref_name }}"
+
+  notify-release:
+    name: Notify Release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    needs: [ release ]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get release information
+        id: release-info
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Released version: $VERSION"
+
+      - name: Create summary
+        run: |
+          cat > $GITHUB_STEP_SUMMARY << EOF
+          ## 🎉 BuildGrid Helm Chart Released!
+          
+          **Version**: v${{ steps.release-info.outputs.version }}
+          
+          ### Installation
+          
+          \`\`\`bash
+          git clone https://github.com/${{ github.repository }}.git
+          cd buildgrid-helm
+          git checkout v${{ steps.release-info.outputs.version }}
+          
+          helm install buildgrid . -n buildgrid --create-namespace
+          \`\`\`
+          
+          ### From GitHub Releases
+          
+          Download chart package from [releases page](https://github.com/${{ github.repository }}/releases/tag/v${{ steps.release-info.outputs.version }})
+          
+          \`\`\`bash
+          helm install buildgrid buildgrid-*.tgz -n buildgrid --create-namespace
+          \`\`\`
+          
+          ### From Helm Repository
+          
+          Add and install from our Helm repository:
+          
+          \`\`\`bash
+          helm repo add buildgrid https://${{ github.repository_owner }}.github.io/buildgrid-helm
+          helm repo update
+          helm install buildgrid buildgrid/buildgrid -n buildgrid --create-namespace
+          \`\`\`
+          
+          ### Release Notes
+          
+          See the [detailed release notes](https://github.com/${{ github.repository }}/releases/tag/v${{ steps.release-info.outputs.version }})
+          EOF
+
+      - name: Print summary
+        run: cat $GITHUB_STEP_SUMMARY

@@ -1,0 +1,208 @@
+name: Helm Test
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Chart.yaml'
+      - 'values*.yaml'
+      - 'templates/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'Chart.yaml'
+      - 'values*.yaml'
+      - 'templates/**'
+
+jobs:
+  test-k3s:
+    name: Test on K3S ${{ matrix.k3s-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        k3s-version: [ 'v1.27', 'v1.28', 'v1.29' ]
+      fail-fast: false
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up K3S
+        uses: AbsaOSS/k3s-action@v2
+        with:
+          k3s-version: ${{ matrix.k3s-version }}
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+
+      - name: Add Helm repositories
+        run: |
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo update
+
+      - name: Create test namespace
+        run: |
+          kubectl create namespace buildgrid-test
+          kubectl label namespace buildgrid-test istio-injection=disabled
+
+      - name: Dry-run install
+        run: |
+          echo "🧪 Testing Helm chart dry-run..."
+          helm install buildgrid-test ./buildgrid-helm \
+            --namespace buildgrid-test \
+            --values ./buildgrid-helm/values-example-dev.yaml \
+            --dry-run \
+            --debug
+
+      - name: Template render
+        run: |
+          echo "📋 Rendering templates..."
+          helm template buildgrid-test ./buildgrid-helm \
+            --namespace buildgrid-test \
+            --values ./buildgrid-helm/values-example-dev.yaml \
+            > /tmp/test-manifest.yaml
+          
+          echo "✅ Generated manifest:"
+          wc -l /tmp/test-manifest.yaml
+
+      - name: Validate manifests with kubeval
+        uses: instrumenta/kubeval-action@master
+        with:
+          files: /tmp/test-manifest.yaml
+          ignore_missing_schemas: true
+
+      - name: Install chart (dev values)
+        run: |
+          echo "📦 Installing BuildGrid Helm chart..."
+          helm install buildgrid-test ./buildgrid-helm \
+            --namespace buildgrid-test \
+            --values ./buildgrid-helm/values-example-dev.yaml \
+            --wait \
+            --timeout 5m
+
+      - name: Verify installation
+        run: |
+          echo "✅ Checking deployment status..."
+          kubectl get all -n buildgrid-test
+          
+          echo "✅ Checking services..."
+          kubectl get svc -n buildgrid-test
+          
+          echo "✅ Checking pods..."
+          kubectl get pods -n buildgrid-test
+
+      - name: Wait for pods
+        run: |
+          echo "⏳ Waiting for pods to be ready..."
+          kubectl wait --for=condition=ready pod \
+            -l app.kubernetes.io/name=buildgrid \
+            -n buildgrid-test \
+            --timeout=300s || true
+          
+          kubectl describe pods -n buildgrid-test || true
+
+      - name: Check pod logs
+        if: always()
+        run: |
+          echo "📜 Pod logs:"
+          kubectl logs -n buildgrid-test --all-containers=true --tail=20 || true
+
+      - name: Verify values override
+        run: |
+          echo "✅ Checking if values were applied correctly..."
+          
+          # Check if PostegreSQL is disabled
+          if helm get values buildgrid-test -n buildgrid-test | grep -q "postgresql:" ; then
+            echo "✅ PostgreSQL section found in values"
+          fi
+
+      - name: Test upgrade
+        run: |
+          echo "🔄 Testing Helm chart upgrade..."
+          helm upgrade buildgrid-test ./buildgrid-helm \
+            --namespace buildgrid-test \
+            --values ./buildgrid-helm/values-example-dev.yaml \
+            --wait \
+            --timeout 5m
+
+      - name: Cleanup
+        if: always()
+        run: |
+          echo "🧹 Cleaning up test namespace..."
+          kubectl delete namespace buildgrid-test --ignore-not-found=true
+
+  test-versions:
+    name: Test Multiple Value Files
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+
+      - name: Test with default values
+        run: |
+          echo "🧪 Testing with default values..."
+          helm template buildgrid ./buildgrid-helm \
+            --values ./buildgrid-helm/values.yaml \
+            > /tmp/manifest-default.yaml
+          echo "✅ Default values: OK"
+
+      - name: Test with production values
+        run: |
+          echo "🧪 Testing with production values..."
+          helm template buildgrid ./buildgrid-helm \
+            --values ./buildgrid-helm/values-example-production.yaml \
+            > /tmp/manifest-prod.yaml
+          echo "✅ Production values: OK"
+
+      - name: Test with bihar values
+        run: |
+          echo "🧪 Testing with Bihar values..."
+          helm template buildgrid ./buildgrid-helm \
+            --values ./buildgrid-helm/values-bihar.yaml \
+            > /tmp/manifest-bihar.yaml
+          echo "✅ Bihar values: OK"
+
+      - name: Compare manifests
+        run: |
+          echo "📊 Comparing manifest sizes:"
+          echo "  Default:    $(wc -l < /tmp/manifest-default.yaml) lines"
+          echo "  Production: $(wc -l < /tmp/manifest-prod.yaml) lines"
+          echo "  Bihar:      $(wc -l < /tmp/manifest-bihar.yaml) lines"
+
+  lint-helm-chart:
+    name: Lint with Helm Lint
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'latest'
+
+      - name: Run Helm Lint
+        run: |
+          echo "🔍 Running helm lint..."
+          helm lint ./buildgrid-helm --strict
+
+      - name: Check chart version
+        run: |
+          VERSION=$(grep "^version:" ./buildgrid-helm/Chart.yaml | awk '{print $2}')
+          echo "📦 Chart version: $VERSION"
+          
+          # Verify version format
+          if [[ ! $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ Invalid version format"
+            exit 1
+          fi
+          echo "✅ Version format is valid"

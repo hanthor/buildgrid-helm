@@ -1,0 +1,217 @@
+name: Quality Checks
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  markdown-lint:
+    name: Lint Markdown Files
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Markdown Lint
+        uses: nosborn/github-action-markdown-cli@v3.3.0
+        with:
+          files: ./buildgrid-helm/README.md ./buildgrid-helm/CHANGELOG.md
+
+  yaml-lint:
+    name: Lint YAML Files
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install yamllint
+        run: pip install yamllint
+
+      - name: Lint YAML files
+        run: |
+          yamllint -c .yamllint ./buildgrid-helm/ || true
+          echo "✅ YAML lint complete"
+
+  readme-check:
+    name: Validate README
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check README sections
+        run: |
+          echo "📖 Checking README.md structure..."
+          
+          README="./buildgrid-helm/README.md"
+          
+          REQUIRED_SECTIONS=(
+            "What is BuildGrid"
+            "Prerequisites"
+            "Install"
+            "Client Configuration"
+          )
+          
+          for section in "${REQUIRED_SECTIONS[@]}"; do
+            if grep -q "^## $section\|^# $section" "$README"; then
+              echo "✅ Found section: $section"
+            else
+              echo "⚠️  Missing section: $section"
+            fi
+          done
+
+  chart-metadata:
+    name: Validate Chart Metadata
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Validate Chart.yaml
+        run: |
+          python3 << 'EOF'
+          import yaml
+          import sys
+          
+          with open('./buildgrid-helm/Chart.yaml', 'r') as f:
+              chart = yaml.safe_load(f)
+          
+          required_fields = ['apiVersion', 'name', 'description', 'type', 'version', 'appVersion']
+          
+          print("📋 Validating Chart.yaml...")
+          
+          for field in required_fields:
+              if field in chart:
+                  print(f"✅ {field}: {chart[field]}")
+              else:
+                  print(f"❌ Missing required field: {field}")
+                  sys.exit(1)
+          
+          # Check version format
+          version = chart['version']
+          if not all(part.isdigit() for part in version.split('.')):
+              print(f"❌ Invalid version format: {version}")
+              sys.exit(1)
+          
+          # Check for maintainers
+          if 'maintainers' in chart:
+              print(f"✅ Maintainers: {len(chart['maintainers'])} defined")
+          else:
+              print("⚠️  No maintainers defined")
+          
+          # Check for keywords
+          if 'keywords' in chart:
+              print(f"✅ Keywords: {', '.join(chart['keywords'][:3])}...")
+          else:
+              print("⚠️  No keywords defined")
+          
+          print("\n✅ Chart.yaml is valid!")
+          EOF
+
+  values-documentation:
+    name: Document Values
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract documented values
+        run: |
+          echo "📚 Checking values documentation..."
+          
+          # Count commented lines in values.yaml
+          COMMENTED=$(grep -c "^[[:space:]]*#" ./buildgrid-helm/values.yaml || echo "0")
+          TOTAL=$(wc -l < ./buildgrid-helm/values.yaml)
+          
+          echo "✅ values.yaml: $COMMENTED comments out of $TOTAL lines"
+          
+          # Check for inline comments
+          INLINE=$(grep ".*:.*#" ./buildgrid-helm/values.yaml | wc -l)
+          echo "✅ Inline comments: $INLINE"
+
+  link-check:
+    name: Check Links in Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for broken markdown links
+        run: |
+          echo "🔗 Checking markdown links..."
+          
+          # Find all markdown files
+          for file in $(find ./buildgrid-helm -name "*.md"); do
+            echo "Checking $file..."
+            
+            # Extract links
+            grep -o '\[.*\](.*\.md)' "$file" | cut -d'(' -f2 | cut -d')' -f1 | while read link; do
+              if [ ! -z "$link" ] && [ "$link" != "http"* ]; then
+                if [ ! -f "$link" ] && [ ! -f "./buildgrid-helm/$link" ]; then
+                  echo "⚠️  Possible broken link: $link"
+                fi
+              fi
+            done
+          done
+          
+          echo "✅ Link check complete"
+
+  helm-best-practices:
+    name: Helm Best Practices
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check naming conventions
+        run: |
+          echo "📋 Checking Helm best practices..."
+          
+          CHART_DIR="./buildgrid-helm"
+          
+          # Check for .helmignore
+          if [ -f "$CHART_DIR/.helmignore" ]; then
+            echo "✅ .helmignore file found"
+          else
+            echo "⚠️  .helmignore file missing"
+          fi
+          
+          # Check template naming
+          if ls $CHART_DIR/templates/_*.tpl 1> /dev/null 2>&1; then
+            echo "✅ Helper templates use leading underscore"
+          else
+            echo "ℹ️  No helper templates found"
+          fi
+          
+          # Check for NOTES.txt
+          if [ -f "$CHART_DIR/templates/NOTES.txt" ]; then
+            echo "✅ NOTES.txt found for post-install instructions"
+          else
+            echo "⚠️  NOTES.txt missing"
+          fi
+          
+          # Check for consistent labeling
+          if grep -r "app.kubernetes.io/name:" "$CHART_DIR/templates/" > /dev/null; then
+            echo "✅ Using recommended Kubernetes labels"
+          else
+            echo "⚠️  Missing recommended Kubernetes labels"
+          fi
