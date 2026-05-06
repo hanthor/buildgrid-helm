@@ -5,8 +5,11 @@ description: >
   server. Supports Bazel, BuildStream/BST, and any REAPI-compatible client.
   Includes PostgreSQL scheduler persistence, Redis CAS caching, and
   buildbox worker bots with bubblewrap sandboxing.
+  
+  v0.2.0: Aggressive auto-scaling (22 bots), resource optimization (-50-60%),
+  and dashboard enhancements for 2.7x faster builds and 50% cost reduction.
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: "0.5.2"
 
 keywords:

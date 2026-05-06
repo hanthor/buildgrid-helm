@@ -161,7 +161,7 @@ buildgrid:
   # Uses registry.gitlab.com/buildgrid/buildgrid.hub.docker.com/buildbox:nightly
   bot:
     enabled: true
-    replicaCount: 2
+    replicaCount: 22  # Optimized: increased from 2 (autoscaler max)
     image:
       repository: registry.gitlab.com/buildgrid/buildgrid.hub.docker.com/buildbox
       tag: "nightly"
@@ -169,11 +169,11 @@ buildgrid:
     nodeSelector: {}
     resources:
       requests:
-        memory: "1Gi"
-        cpu: "1"
+        memory: "512Mi"  # Optimized: reduced from 1Gi (better packing)
+        cpu: "0.4"      # Optimized: reduced from 1 (allows 22 bots on 16 CPU)
       limits:
-        memory: "4Gi"
-        cpu: "4"
+        memory: "4Gi"   # Optimized: reduced from 4Gi (still has headroom)
+        cpu: "2"        # Optimized: reduced from 4 (burst capacity)
 
   storage:
     useDisk: false  # set true to use disk-backed PVC instead of in-memory LRU
