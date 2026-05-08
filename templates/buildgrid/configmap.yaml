@@ -22,10 +22,10 @@ data:
     connections:
       - !sql-connection &sql
         connection-string: "postgresql://{{ .Values.postgresql.auth.username }}:{{ .Values.postgresql.auth.password }}@{{ include "buildgrid.fullname" . }}-postgresql:5432/{{ .Values.postgresql.auth.database }}"
-        pool-size: 10
-        pool-timeout: 30
+        pool-size: 20
+        pool-timeout: 60
         pool-recycle: 3600
-        max-overflow: 20
+        max-overflow: 40
       {{- if .Values.redis.enabled }}
       - !redis-connection &redis
         host: {{ include "buildgrid.fullname" . }}-redis
