@@ -19,6 +19,9 @@ on:
 
 jobs:
   security-scan:
+    permissions:
+      security-events: write
+      contents: read
     name: Security Scan - Helm Chart
     runs-on: ubuntu-latest
     
