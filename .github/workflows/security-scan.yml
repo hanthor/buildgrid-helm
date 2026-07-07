@@ -1,6 +1,7 @@
 name: Security Scan
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
     paths:
@@ -14,12 +15,14 @@ on:
       - 'values*.yaml'
       - 'templates/**'
   schedule:
-    - cron: '0 0 * * 0'  # Weekly scan
+    - cron:
+  workflow_dispatch: '0 0 * * 0'  # Weekly scan
 
 jobs:
   security-scan:
     name: Security Scan - Helm Chart
-    runs-on: ubuntu-latest
+    runs-on:
+  workflow_dispatch: ubuntu-latest
     
     steps:
       - name: Checkout code
@@ -28,7 +31,8 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v3
         with:
-          version: 'latest'
+          version:
+  workflow_dispatch: 'latest'
 
       - name: Render templates
         run: |
@@ -96,7 +100,8 @@ jobs:
 
   policy-check:
     name: Policy Check - RBAC & Network Policy
-    runs-on: ubuntu-latest
+    runs-on:
+  workflow_dispatch: ubuntu-latest
     
     steps:
       - name: Checkout code
@@ -105,7 +110,8 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v3
         with:
-          version: 'latest'
+          version:
+  workflow_dispatch: 'latest'
 
       - name: Check RBAC configuration
         run: |
@@ -148,7 +154,8 @@ jobs:
 
   dependency-check:
     name: Check Chart Dependencies
-    runs-on: ubuntu-latest
+    runs-on:
+  workflow_dispatch: ubuntu-latest
     
     steps:
       - name: Checkout code
@@ -157,7 +164,8 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v3
         with:
-          version: 'latest'
+          version:
+  workflow_dispatch: 'latest'
 
       - name: Check Chart.yaml dependencies
         run: |
@@ -177,7 +185,8 @@ jobs:
 
   changelog-check:
     name: Validate CHANGELOG
-    runs-on: ubuntu-latest
+    runs-on:
+  workflow_dispatch: ubuntu-latest
     
     steps:
       - name: Checkout code
@@ -207,7 +216,8 @@ jobs:
           fi
           
           # Get current chart version
-          VERSION=$(grep "^version:" ./Chart.yaml | awk '{print $2}')
+          VERSION=$(grep "^version:
+  workflow_dispatch:" ./Chart.yaml | awk '{print $2}')
           
           if grep -q "^## \[$VERSION\]" "$CHANGELOG"; then
             echo "✅ CHANGELOG has entry for version $VERSION"
