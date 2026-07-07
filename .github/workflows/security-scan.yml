@@ -32,8 +32,8 @@ jobs:
 
       - name: Render templates
         run: |
-          helm template buildgrid ./buildgrid-helm \
-            --values ./buildgrid-helm/values.yaml \
+          helm template buildgrid . \
+            --values ./values.yaml \
             > /tmp/buildgrid-manifests.yaml
 
       - name: Scan with Trivy
@@ -46,7 +46,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
@@ -163,7 +163,7 @@ jobs:
         run: |
           echo "📦 Checking chart dependencies..."
           
-          CHART_FILE="./buildgrid-helm/Chart.yaml"
+          CHART_FILE="./Chart.yaml"
           
           if grep -q "^dependencies:" "$CHART_FILE"; then
             echo "ℹ️  Chart has dependencies"
@@ -187,7 +187,7 @@ jobs:
         run: |
           echo "📝 Validating CHANGELOG.md..."
           
-          CHANGELOG="./buildgrid-helm/CHANGELOG.md"
+          CHANGELOG="./CHANGELOG.md"
           
           if [ ! -f "$CHANGELOG" ]; then
             echo "⚠️  CHANGELOG.md not found"
@@ -207,7 +207,7 @@ jobs:
           fi
           
           # Get current chart version
-          VERSION=$(grep "^version:" ./buildgrid-helm/Chart.yaml | awk '{print $2}')
+          VERSION=$(grep "^version:" ./Chart.yaml | awk '{print $2}')
           
           if grep -q "^## \[$VERSION\]" "$CHANGELOG"; then
             echo "✅ CHANGELOG has entry for version $VERSION"
